@@ -1,0 +1,377 @@
+---
+title: "Final Assignment - Solution @RK"
+author: "Rahul Kashyap"
+date: "2023-04-28"
+output: html_document
+---
+
+
+
+```{r Part-1}
+library(dplyr)
+library(ggplot2)
+library(knitr)
+library(tidyr)
+
+
+#--------PART -1 ----------------------
+
+# Load the dataset
+news_data <- read.csv("/Users/rahulkashyap/Downloads/Downloads Backup/MBAN Course Material/MBAN5550 ML & AI/Assignments/Final Project/OnlineNewsPopularity/OnlineNewsPopularity.csv")
+
+# Check the structure of the dataset
+str(news_data)
+
+# Check for missing values
+sum(is.na(news_data))
+
+# Remove unnecessary features
+news_data <- news_data[, -c(1,2)]
+
+
+
+# Remove Outliers
+boxplot(news_data$shares/1000, ylab = "Shares (in thousands)")
+news_data <- news_data[!(news_data$shares > 100000),]
+
+
+# Normalize numerical features
+#news_data[,1:11] <- scale(news_data[,1:11])
+#news_data$shares <- scale(news_data$shares)
+
+
+#Check the balance of the target variable
+#table(news_data$share)
+
+
+# Create summary statistics table for continuous features
+summary_table <- news_data %>% 
+  select( -n_tokens_title, -n_tokens_content, -num_hrefs, -num_self_hrefs, 
+         -num_imgs, -num_videos, -kw_min_min, -kw_max_min, -kw_avg_min, -kw_min_max, 
+         -kw_max_max, -kw_avg_max, -kw_min_avg, -kw_max_avg, -kw_avg_avg, -self_reference_min_shares, 
+         -self_reference_max_shares, -self_reference_avg_sharess, -weekday_is_monday, 
+         -weekday_is_tuesday, -weekday_is_wednesday, -weekday_is_thursday, -weekday_is_friday, 
+         -weekday_is_saturday, -weekday_is_sunday) %>% 
+  summary() %>% 
+  as.data.frame() %>% 
+  mutate(feature = row.names(.)) %>% 
+  select(feature, everything()) %>% 
+  kable()
+summary_table
+
+# Create popularity categories distribution table
+popularity_table <- news_data %>% 
+  mutate(popularity = ifelse(shares > 1400, "popular", "non-popular")) %>% 
+  group_by(popularity) %>% 
+  summarize(count = n())
+
+
+# Create data channels distribution table
+lifestyle_tbl <- table(news_data$data_channel_is_lifestyle)
+entertainment_tbl <- table(news_data$data_channel_is_entertainment)
+bus_tbl <- table(news_data$data_channel_is_bus)
+socmed_tbl <- table(news_data$data_channel_is_socmed)
+tech_tbl <- table(news_data$data_channel_is_tech)
+world_tbl <- table(news_data$data_channel_is_world)
+
+channel_tbl <- cbind(lifestyle_tbl, entertainment_tbl, bus_tbl, socmed_tbl, tech_tbl, world_tbl)
+colnames(channel_tbl) <- c("Lifestyle", "Entertainment", "Business", "Social Media", "Tech", "World")
+
+
+# Create Weekday distribution channels distribution table
+monday <- table(news_data$weekday_is_monday)
+tuesday <- table(news_data$weekday_is_tuesday)
+wednesday <- table(news_data$weekday_is_wednesday)
+thursday <- table(news_data$weekday_is_thursday)
+friday <- table(news_data$weekday_is_friday)
+saturday <- table(news_data$weekday_is_saturday)
+sunday <- table(news_data$weekday_is_sunday)
+
+week_tbl <- cbind(monday, tuesday, wednesday, thursday, friday, saturday, sunday)
+colnames(week_tbl) <- c("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
+
+
+popularity_table
+channel_tbl
+week_tbl
+
+
+# Plot the popularity table
+ggplot(data = popularity_table, aes(x = popularity, y = count)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  ggtitle("Popularity Distribution")
+
+
+# Plot the channel table
+
+channel_tbl_df <- as.data.frame(channel_tbl)
+channel_tbl_long <- pivot_longer(channel_tbl_df, cols = everything(), names_to = "Channel", values_to = "Count")
+ggplot(data = channel_tbl_long, aes(x = Channel, y = Count)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  ggtitle("Data Channel Distribution") +
+  ylim(0, max(channel_tbl_long$Count) + 1000)
+
+# Plot the weekday table
+week_tbl_df <- as.data.frame(week_tbl)
+week_tbl_long <- pivot_longer(week_tbl_df, cols = everything(), names_to = "Weeks", values_to = "Count")
+ggplot(data = week_tbl_long, aes(x = Weeks, y = Count)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  ggtitle("Week Days Distribution") +
+  ylim(0, max(week_tbl_long$Count) + 1000)
+
+
+
+print("Polularity Insights: Non-Popular category has more frequency than popular category")
+print("Data Channel Insights: Lifestyle is the most impactual")
+print("Weed Days Insights: Weekdays is evenly distributed, nothing out of order")
+
+
+```
+
+
+
+
+```{r Part-2}
+
+#--------PART -2 Regression----------------------
+
+library(caret)
+library(ISLR)
+
+
+# Split the data into training and testing sets
+set.seed(123)
+index <- sample(nrow(news_data), nrow(news_data) * 0.7, replace = TRUE)
+train_data <- news_data[index, ]
+test_data <- news_data[-index, ]
+
+
+# Linear Regression Model
+lm_model <- lm(shares ~. ,data = train_data )
+lm_pred <- predict(lm_model, newdata = test_data)
+lm_summary <- summary(lm_model)
+lm_r2 <- lm_summary$r.squared
+lm_mse <- mean(lm_summary$residuals^2)
+lm_rmse <- sqrt(lm_mse)
+lm_rmspe <- lm_rmse / mean(test_data$shares)
+
+# Print the evaluation metrics
+cat("Liner Regression Model:\n")
+cat("R-squared: ", round(lm_r2, 3), "\n")
+cat("MSE: ", round(lm_mse, 3), "\n")
+cat("RMSE: ", round(lm_rmse, 3), "\n")
+cat("RMSPE: ", round(lm_rmspe, 3), "\n")
+
+
+# Random Forests Model
+library(randomForest)
+library(rpart)
+
+rf_model <- randomForest(shares ~. , ntree = 100, data = train_data )
+rf_pred <- predict(rf_model, newdata = test_data)
+rf_rmse <- RMSE(rf_pred, test_data$shares)
+rf_mse <- mean((rf_pred - test_data$shares)^2)
+rf_r2 <- R2(rf_pred, test_data$shares)
+rf_rmspe <- rf_rmse / mean(test_data$shares)
+
+# Print the evaluation metrics
+cat("Random Forest Model:\n")
+cat(paste0("RMSE: ", round(rf_rmse, 2), "\n"))
+cat(paste0("MSE: ", round(rf_mse, 2), "\n"))
+cat(paste0("R2: ", round(rf_r2, 2), "\n"))
+cat(paste0("RMSPE: ", round(rf_rmspe, 4), "\n"))
+
+
+
+
+# Gradient Boosting Model
+library(gbm)
+gbm_model <- gbm(shares ~ ., data = train_data, distribution ="gaussian", n.trees=100)
+#gbm_model <- train(shares ~ ., data = train_data, method = "gbm")
+gbm_pred <- predict(gbm_model, newdata = test_data)
+gbm_r2 <- summary(lm(shares ~ gbm_pred, data = test_data))$r.squared
+gbm_mse <- mean((gbm_pred - test_data$shares) ^ 2)
+gbm_rmse <- sqrt(gbm_mse)
+gbm_rmspe <- gbm_rmse / mean(test_data$shares)
+
+# Print the evaluation metrics
+cat("Gradient Boosting Model:\n")
+cat(paste0("R-squared: ", round(gbm_r2, 4), "\n"))
+cat(paste0("MSE: ", round(gbm_mse, 2), "\n"))
+cat(paste0("RMSE: ", round(gbm_rmse, 2), "\n"))
+cat(paste0("RMSPE: ", round(gbm_rmspe, 4), "\n"))
+
+
+
+# Calculate and Compare RMPSE Score
+cat(paste0("Liner Regression Results:\n",
+           "R-squared: ", round(lm_r2, 3), "\n",
+           "MSE: ", round(lm_mse, 3), "\n",
+           "RMSE: ", round(lm_rmse, 3), "\n",
+           "RMSPE: ", round(lm_rmspe, 3), "\n"))
+
+
+cat(paste0("RandomForest Regression Results:\n",
+           "R-squared: ", round(rf_r2, 3), "\n",
+           "MSE: ", round(rf_mse, 3), "\n",
+           "RMSE: ", round(rf_rmse, 3), "\n",
+           "RMSPE: ", round(rf_rmspe, 3), "\n"))
+
+
+cat(paste0("Gradiant Boosting Regression Results:\n",
+           "R-squared: ", round(gbm_r2, 3), "\n",
+           "MSE: ", round(gbm_mse, 3), "\n",
+           "RMSE: ", round(gbm_rmse, 3), "\n",
+           "RMSPE: ", round(gbm_rmspe, 3), "\n"))
+
+
+pick_best_model <- function(lm_rmspe, rf_rmspe, gbm_rmspe) {
+  lm_mean_rmspe <- lm_rmspe
+  rf_mean_rmspe <- rf_rmspe
+  gbm_mean_rmspe <- gbm_rmspe
+  mean_rmspe_df <- data.frame(Model = c("Linear Regression", "Random Forest", "Gradient Boosting"),
+                            R2 = c(lm_r2, rf_r2, gbm_r2),
+                              RMSPE = c(lm_mean_rmspe, rf_mean_rmspe, gbm_mean_rmspe))
+  mean_rmspe_df <- mean_rmspe_df[order(mean_rmspe_df$RMSPE), ]
+  print(mean_rmspe_df)
+  best_model <- ifelse(mean_rmspe_df$RMSPE[1] == lm_mean_rmspe, "Linear Regression",
+                       ifelse(mean_rmspe_df$RMSPE[1] == rf_mean_rmspe, "Random Forest", "Gradient Boosting"))
+  cat(paste0("\nThe best model is (based on RMSPE): ", best_model))
+  return(best_model)
+}
+
+best_model <- pick_best_model(lm_rmspe, rf_rmspe, gbm_rmspe)
+
+```
+
+
+
+
+```{r Part-3}
+
+#--------PART -3 Classification ----------------------
+# Create a categorical target variable
+news_data$popularity <- ifelse(news_data$shares > 1400, "Popular", "Not Popular")
+news_data$popularity <- as.factor(news_data$popularity)
+
+# Check the balance of the target variable
+table(news_data$popularity)
+
+
+set.seed(123)
+index <- sample(nrow(news_data), nrow(news_data) * 0.7, replace = TRUE)
+train_data <- news_data[index, ]
+test_data <- news_data[-index, ]
+
+# Logistic Regression Model
+library(nnet)
+
+lr_model <- multinom(popularity ~., data = train_data)
+lr_pred <- predict(lr_model, newdata = test_data, "class")
+lr_acc <- mean(lr_pred == test_data$popularity)
+
+# Decision Trees Model
+library(rpart)
+dt_model <- rpart(popularity ~ ., data = train_data, method = "class")
+dt_pred <- predict(dt_model, newdata = test_data, type = "class")
+dt_acc <- mean(dt_pred == test_data$popularity)
+
+# Random Forests Model
+rf_model_c <- randomForest(popularity ~ ., ntree = 100, data = train_data )
+rf_pred_c <- predict(rf_model_c, newdata = test_data, type = "class")
+rf_acc_c <- mean(rf_pred_c == test_data$popularity)
+
+# Gradient Boosting Model
+gbm_model_c <- gbm(popularity ~ ., data = train_data, distribution ="multinomial", n.trees=100)
+gbm_pred_c <- predict.gbm(gbm_model_c, newdata = test_data, n.trees=100, type="response")
+gbm_pred_c <- apply(gbm_pred_c, 1, which.max)
+gbm_acc_c <- mean(gbm_pred_c == test_data$popularity)
+
+# Compare the results
+cat("Logistic Regression Accuracy: ", round(lr_acc, 3), "\n")
+cat("Decision Trees Accuracy: ", round(dt_acc, 3), "\n")
+cat("Random Forests Accuracy: ", round(rf_acc_c, 3), "\n")
+cat("Gradient Boosting Accuracy: ", round(gbm_acc_c, 3), "\n")
+
+print("Based on Acc score, Random Forrest or Decision Tree seems to be Best model but they might be overfitting")
+print("Hence, I choose Best Practical model to be Logistic Regression ")
+
+
+```
+
+
+
+
+```{r Part-4}
+#--------Model Interpretation ----------------------
+
+# Feature Importance Analysis
+
+# Regression
+lm_importance <- as.data.frame(varImp(lm_model))   # Best Model
+#rf_importance <- importance(rf_model)
+#gbm_importance <- summary(gbm_model)
+
+# Classifiaction
+lr_importance <- as.data.frame(varImp(lr_model)) # Practical Model
+#rf_c_importance <- importance(rf_model_c)   
+#gbm_c_importance <- summary(gbm_model_c)
+
+# Feature Importance Visualization
+
+lm_importance %>%
+  ggplot(aes(reorder(rownames(lm_importance), -Overall), Overall)) +
+  geom_bar(stat = "identity", fill = "blue") +
+  ggtitle("Linear Regression: Feature Importance") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  xlab("Features") +
+  ylab("Importance Score") +
+  coord_flip()
+
+lr_importance %>%
+  ggplot(aes(reorder(rownames(lr_importance), -Overall), Overall)) +
+  geom_bar(stat = "identity", fill = "blue") +
+  ggtitle("Logistic Regression Classification: Feature Importance") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  xlab("Features") +
+  ylab("Importance Score") +
+  coord_flip()
+
+
+print("Regression Insights: Based on feature importance, 'kw_avg_avg' seems to be the top feature ")
+print("Classification Insights: Based on feature importance, 'global_rate_negative_words' seems to be the top feature ")
+
+
+
+# Create a confusion matrix for the Best Classification Model
+best_model <- lr_model #logistic regression
+best_pred <- predict(best_model , newdata = test_data, "class")
+# Create the confusion matrix
+conf_mat <- table(best_pred, test_data$popularity)
+conf_mat
+
+print ("Based on the logistic regression model, the following features were found to be the most important in predicting the popularity of an article:")
+print("-> n_unique_tokens: The number of unique tokens in the article.")
+print("-> n_non_stop_words: The number of non-stop words in the article.")
+print("-> data_channel_is_lifestyle: Whether the article was in the lifestyle data channel.")
+print("-> data_channel_is_tech: Whether the article was in the tech data channel.")
+print("-> weekday_is_monday: Whether the article was published on a Monday.")
+print("-> weekday_is_tuesday: Whether the article was published on a Tuesday.")
+print("-> weekday_is_wednesday: Whether the article was published on a Wednesday.")
+print("-> weekday_is_thursday: Whether the article was published on a Thursday.")
+print("-> weekday_is_friday: Whether the article was published on a Friday.")
+print("-> global_rate_negative_words: The rate of negative words in the article.")
+
+cat("\n")
+
+print("Recommendations: based on these findings, content creators and marketers can take the following actions to improve the popularity of their articles:")
+print("-> Use a diverse vocabulary with a high number of unique words to make the article stand out from others.")
+print("-> Avoid using too many stop words in the article, as they can make it less interesting and engaging to readers.")
+print("-> Consider publishing articles in the lifestyle or tech data channels, as these channels appear to have a higher likelihood of generating popular articles.")
+print("-> Consider publishing articles on weekdays, particularly on Mondays through Fridays, as these days appear to have a higher likelihood of generating popular articles.")
+print("-> Pay attention to the tone of the article and avoid using too many negative words, as they can turn off readers and make the article less popular.")
+
+
+
+
+```
